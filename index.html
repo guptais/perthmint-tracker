@@ -54,7 +54,7 @@
     async function load() {
       const res = await fetch(CSV_URL + '?_=' + Date.now());
       const text = await res.text();
-      const rows = text.trim().split('\n').map(r => {
+      const rows = text.trim().split('\n').slice(1).map(r => {
         const cols = r.match(/(".*?"|[^,]+)(?=,|$)/g) || [];
         return cols.map(c => c.replace(/^"|"$/g, '').trim());
       });
