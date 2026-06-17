@@ -41,7 +41,7 @@
         <p class="updated" id="last-updated"></p>
       </div>
       <div class="card">
-        <h2>Price History</h2>
+        <h2>Price History — Last 7 Days</h2>
         <div class="chart-wrap"><canvas id="chart"></canvas></div>
       </div>
     </div>
@@ -78,8 +78,9 @@
       }
       document.getElementById('last-updated').textContent = `Last scraped: ${lastTs.replace('T',' ').slice(0,16)} UTC`;
 
-      // chart — all unique timestamps as x-axis
-      const allTs = [...new Set(rows.map(r => r[0]))].sort();
+      // chart — last 7 days only
+      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const allTs = [...new Set(rows.map(r => r[0]).filter(ts => ts >= cutoff))].sort();
       const datasets = Object.entries(byProduct).map(([name, entries], i) => {
         const map = Object.fromEntries(entries.map(e => [e.ts, e.price]));
         return {
