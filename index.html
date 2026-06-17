@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Perth Mint Price Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #222; }
+    header { background: #1a1a2e; color: #fff; padding: 1.5rem 2rem; }
+    header h1 { font-size: 1.4rem; font-weight: 600; }
+    header p { font-size: 0.85rem; color: #aaa; margin-top: 0.25rem; }
+    main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: #444; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card { background: #fff; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid #eee; color: #666; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
+    td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f0f0f0; }
+    tr:last-child td { border-bottom: none; }
+    .price { font-weight: 600; color: #1a1a2e; }
+    .updated { font-size: 0.8rem; color: #888; margin-top: 0.5rem; }
+    .chart-wrap { position: relative; height: 320px; }
+    #status { text-align: center; padding: 3rem; color: #888; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Perth Mint Price Tracker</h1>
+    <p>Live gold &amp; silver cast bar prices — updated daily</p>
+  </header>
+  <main>
+    <div id="status">Loading prices…</div>
+    <div id="content" style="display:none">
+      <div class="card">
+        <h2>Latest Prices</h2>
+        <table id="latest-table">
+          <thead><tr><th>Product</th><th>Price (AUD)</th><th>As at</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="updated" id="last-updated"></p>
+      </div>
+      <div class="card">
+        <h2>Price History</h2>
+        <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      </div>
+    </div>
+  </main>
+  <script>
+    const CSV_URL = 'https://raw.githubusercontent.com/guptais/perthmint-tracker/main/perthmint_cast_bar_prices.csv';
+
+    const COLORS = ['#e63946','#457b9d','#2a9d8f','#e9c46a','#f4a261'];
+
+    async function load() {
+      const res = await fetch(CSV_URL + '?_=' + Date.now());
+      const text = await res.text();
+      const rows = text.trim().split('\n').map(r => {
+        const cols = r.match(/(".*?"|[^,]+)(?=,|$)/g) || [];
+        return cols.map(c => c.replace(/^"|"$/g, '').trim());
+      });
+
+      // group by product
+      const byProduct = {};
+      for (const [ts, name, price] of rows) {
+        if (!byProduct[name]) byProduct[name] = [];
+        byProduct[name].push({ ts, price: parseFloat(price) });
+      }
+
+      // latest prices table
+      const tbody = document.querySelector('#latest-table tbody');
+      let lastTs = '';
+      for (const [name, entries] of Object.entries(byProduct)) {
+        const latest = entries[entries.length - 1];
+        lastTs = latest.ts;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${name}</td><td class="price">AUD ${latest.price.toLocaleString('en-AU', {minimumFractionDigits:2})}</td><td>${latest.ts.replace('T',' ').slice(0,16)} UTC</td>`;
+        tbody.appendChild(tr);
+      }
+      document.getElementById('last-updated').textContent = `Last scraped: ${lastTs.replace('T',' ').slice(0,16)} UTC`;
+
+      // chart — all unique timestamps as x-axis
+      const allTs = [...new Set(rows.map(r => r[0]))].sort();
+      const datasets = Object.entries(byProduct).map(([name, entries], i) => {
+        const map = Object.fromEntries(entries.map(e => [e.ts, e.price]));
+        return {
+          label: name.replace('The Perth Mint ', ''),
+          data: allTs.map(ts => map[ts] ?? null),
+          borderColor: COLORS[i % COLORS.length],
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          pointRadius: allTs.length < 30 ? 4 : 2,
+          spanGaps: true,
+        };
+      });
+
+      new Chart(document.getElementById('chart'), {
+        type: 'line',
+        data: {
+          labels: allTs.map(ts => ts.replace('T',' ').slice(0,16)),
+          datasets,
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+            y: { ticks: { callback: v => 'AUD ' + v.toLocaleString('en-AU') } },
+          },
+        },
+      });
+
+      document.getElementById('status').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+    }
+
+    load().catch(e => {
+      document.getElementById('status').textContent = 'Failed to load prices: ' + e.message;
+    });
+  </script>
+</body>
+</html>
