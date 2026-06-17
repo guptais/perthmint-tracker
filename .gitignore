@@ -1,0 +1,14 @@
+# venv
+perthmint-tracker/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store

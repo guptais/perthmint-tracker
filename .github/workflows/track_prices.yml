@@ -1,0 +1,35 @@
+name: Track Perth Mint Prices
+
+on:
+  schedule:
+    - cron: '0 9 * * *'   # 9am UTC daily (7pm AEST)
+  workflow_dispatch:        # allows manual trigger from GitHub UI
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Run price tracker
+        run: python perthmint_price_tracker.py
+
+      - name: Commit updated CSV
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add perthmint_cast_bar_prices.csv
+          git diff --staged --quiet || git commit -m "Price update $(date -u '+%Y-%m-%d %H:%M')"
+          git push
