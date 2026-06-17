@@ -13,14 +13,20 @@
     header p { font-size: 0.85rem; color: #aaa; margin-top: 0.25rem; }
     main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
     h2 { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: #444; text-transform: uppercase; letter-spacing: 0.05em; }
+    h3 { font-size: 0.8rem; font-weight: 700; padding: 0.5rem 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .gold-head { background: #fef9ec; color: #92640a; border-bottom: 1px solid #f0e0a0; }
+    .silver-head { background: #f0f4f8; color: #4a5568; border-bottom: 1px solid #d0dde8; }
     .card { background: #fff; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .card-no-pad { background: #fff; border-radius: 8px; overflow: hidden; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 1.5rem 1.5rem 0; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
     th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid #eee; color: #666; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
     td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f0f0f0; }
     tr:last-child td { border-bottom: none; }
     .price { font-weight: 600; color: #1a1a2e; }
-    .updated { font-size: 0.8rem; color: #888; margin-top: 0.5rem; }
-    .chart-wrap { position: relative; height: 320px; }
+    .updated { font-size: 0.8rem; color: #888; margin-top: 0.75rem; }
+    .chart-wrap { position: relative; height: 280px; }
+    .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+    @media (max-width: 640px) { .charts-row { grid-template-columns: 1fr; } }
     #status { text-align: center; padding: 3rem; color: #888; }
   </style>
 </head>
@@ -32,24 +38,61 @@
   <main>
     <div id="status">Loading prices…</div>
     <div id="content" style="display:none">
-      <div class="card">
+      <div class="card-no-pad">
         <h2>Latest Prices</h2>
         <table id="latest-table">
           <thead><tr><th>Product</th><th>Price (AUD)</th><th>As at</th></tr></thead>
           <tbody></tbody>
         </table>
         <p class="updated" id="last-updated"></p>
+        <p style="height:1rem"></p>
       </div>
-      <div class="card">
-        <h2>Price History — Last 7 Days</h2>
-        <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      <div class="charts-row">
+        <div class="card">
+          <h2>Gold — Last 7 Days</h2>
+          <div class="chart-wrap"><canvas id="chart-gold"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>Silver — Last 7 Days</h2>
+          <div class="chart-wrap"><canvas id="chart-silver"></canvas></div>
+        </div>
       </div>
     </div>
   </main>
   <script>
     const CSV_URL = 'https://raw.githubusercontent.com/guptais/perthmint-tracker/main/perthmint_cast_bar_prices.csv';
 
-    const COLORS = ['#e63946','#457b9d','#2a9d8f','#e9c46a','#f4a261'];
+    const GOLD_COLORS   = ['#c9832a','#e9a84c','#f5c97a','#a05c1a'];
+    const SILVER_COLORS = ['#457b9d','#2a9d8f','#6baec6'];
+
+    function buildChart(canvasId, allTs, entries, colors) {
+      const datasets = Object.entries(entries).map(([name, data], i) => {
+        const map = Object.fromEntries(data.map(e => [e.ts, e.price]));
+        return {
+          label: name.replace('The Perth Mint ', ''),
+          data: allTs.map(ts => map[ts] ?? null),
+          borderColor: colors[i % colors.length],
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          pointRadius: allTs.length < 30 ? 4 : 2,
+          spanGaps: true,
+        };
+      });
+      new Chart(document.getElementById(canvasId), {
+        type: 'line',
+        data: { labels: allTs.map(ts => ts.replace('T',' ').slice(0,16)), datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { maxTicksLimit: 8, font: { size: 10 } } },
+            y: { ticks: { callback: v => 'AUD ' + v.toLocaleString('en-AU') } },
+          },
+        },
+      });
+    }
 
     async function load() {
       const res = await fetch(CSV_URL + '?_=' + Date.now());
@@ -66,51 +109,38 @@
         byProduct[name].push({ ts, price: parseFloat(price) });
       }
 
-      // latest prices table
+      // split gold / silver
+      const gold   = Object.fromEntries(Object.entries(byProduct).filter(([n]) => n.includes('Gold')));
+      const silver = Object.fromEntries(Object.entries(byProduct).filter(([n]) => n.includes('Silver')));
+
+      // latest prices table — gold section then silver
       const tbody = document.querySelector('#latest-table tbody');
       let lastTs = '';
-      for (const [name, entries] of Object.entries(byProduct)) {
-        const latest = entries[entries.length - 1];
-        lastTs = latest.ts;
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${name}</td><td class="price">AUD ${latest.price.toLocaleString('en-AU', {minimumFractionDigits:2})}</td><td>${latest.ts.replace('T',' ').slice(0,16)} UTC</td>`;
-        tbody.appendChild(tr);
-      }
+
+      const addSection = (label, cls, products) => {
+        const hdr = document.createElement('tr');
+        hdr.innerHTML = `<td colspan="3"><h3 class="${cls}">${label}</h3></td>`;
+        tbody.appendChild(hdr);
+        for (const [name, entries] of Object.entries(products)) {
+          const latest = entries[entries.length - 1];
+          if (latest.ts > lastTs) lastTs = latest.ts;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${name.replace('The Perth Mint ', '')}</td><td class="price">AUD ${latest.price.toLocaleString('en-AU', {minimumFractionDigits:2})}</td><td>${latest.ts.replace('T',' ').slice(0,16)} UTC</td>`;
+          tbody.appendChild(tr);
+        }
+      };
+
+      addSection('Gold', 'gold-head', gold);
+      addSection('Silver', 'silver-head', silver);
+
       document.getElementById('last-updated').textContent = `Last scraped: ${lastTs.replace('T',' ').slice(0,16)} UTC`;
 
-      // chart — last 7 days only
+      // chart — last 7 days
       const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const allTs = [...new Set(rows.map(r => r[0]).filter(ts => ts >= cutoff))].sort();
-      const datasets = Object.entries(byProduct).map(([name, entries], i) => {
-        const map = Object.fromEntries(entries.map(e => [e.ts, e.price]));
-        return {
-          label: name.replace('The Perth Mint ', ''),
-          data: allTs.map(ts => map[ts] ?? null),
-          borderColor: COLORS[i % COLORS.length],
-          backgroundColor: 'transparent',
-          tension: 0.3,
-          pointRadius: allTs.length < 30 ? 4 : 2,
-          spanGaps: true,
-        };
-      });
 
-      new Chart(document.getElementById('chart'), {
-        type: 'line',
-        data: {
-          labels: allTs.map(ts => ts.replace('T',' ').slice(0,16)),
-          datasets,
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
-          scales: {
-            x: { ticks: { maxTicksLimit: 10, font: { size: 10 } } },
-            y: { ticks: { callback: v => 'AUD ' + v.toLocaleString('en-AU') } },
-          },
-        },
-      });
+      buildChart('chart-gold',   allTs, gold,   GOLD_COLORS);
+      buildChart('chart-silver', allTs, silver, SILVER_COLORS);
 
       document.getElementById('status').style.display = 'none';
       document.getElementById('content').style.display = 'block';
