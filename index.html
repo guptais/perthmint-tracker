@@ -26,7 +26,13 @@
     .updated { font-size: 0.8rem; color: #888; margin-top: 0.75rem; }
     .chart-wrap { position: relative; height: 280px; }
     .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
-    @media (max-width: 640px) { .charts-row { grid-template-columns: 1fr; } }
+    .top-row { display: grid; grid-template-columns: 1fr auto; gap: 1.5rem; margin-bottom: 2rem; align-items: start; }
+    .conversion-aside { background: #fff; border-radius: 8px; padding: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); min-width: 200px; }
+    .conversion-aside h2 { font-size: 0.7rem; margin-bottom: 0.5rem; }
+    .conversion-aside table { font-size: 0.78rem; }
+    .conversion-aside th { font-size: 0.7rem; padding: 0.3rem 0.5rem; }
+    .conversion-aside td { padding: 0.3rem 0.5rem; }
+    @media (max-width: 640px) { .charts-row { grid-template-columns: 1fr; } .top-row { grid-template-columns: 1fr; } }
     #status { text-align: center; padding: 3rem; color: #888; }
   </style>
 </head>
@@ -38,27 +44,29 @@
   <main>
     <div id="status">Loading prices…</div>
     <div id="content" style="display:none">
-      <div class="card-no-pad">
-        <h2>Latest Prices</h2>
-        <table id="latest-table">
-          <thead><tr><th>Product</th><th>Price (AUD)</th><th>As at</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <p class="updated" id="last-updated"></p>
-        <p style="height:1rem"></p>
-      </div>
-      <div class="card">
-        <h2>Weight Conversion Reference</h2>
-        <table>
-          <thead><tr><th>Troy Oz</th><th>Grams</th><th>Kilograms</th></tr></thead>
-          <tbody>
-            <tr><td>1 oz</td><td>31.10 g</td><td>0.031 kg</td></tr>
-            <tr><td>5 oz</td><td>155.52 g</td><td>0.156 kg</td></tr>
-            <tr><td>10 oz</td><td>311.03 g</td><td>0.311 kg</td></tr>
-            <tr><td>100 g</td><td>100.00 g</td><td>0.100 kg</td></tr>
-            <tr><td>32.15 oz</td><td>1,000.00 g</td><td>1.000 kg</td></tr>
-          </tbody>
-        </table>
+      <div class="top-row">
+        <div class="card-no-pad">
+          <h2>Latest Prices</h2>
+          <table id="latest-table">
+            <thead><tr><th>Product</th><th>Price (AUD)</th><th>As at</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="updated" id="last-updated"></p>
+          <p style="height:1rem"></p>
+        </div>
+        <div class="conversion-aside">
+          <h2>Weight Reference</h2>
+          <table>
+            <thead><tr><th>Troy Oz</th><th>Grams</th></tr></thead>
+            <tbody>
+              <tr><td>1 oz</td><td>31.10 g</td></tr>
+              <tr><td>5 oz</td><td>155.52 g</td></tr>
+              <tr><td>10 oz</td><td>311.03 g</td></tr>
+              <tr><td>100 g</td><td>3.22 oz</td></tr>
+              <tr><td>1 kg</td><td>32.15 oz</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
       <div class="charts-row">
         <div class="card">
