@@ -17,7 +17,7 @@
     .gold-head { background: #fef9ec; color: #92640a; border-bottom: 1px solid #f0e0a0; }
     .silver-head { background: #f0f4f8; color: #4a5568; border-bottom: 1px solid #d0dde8; }
     .card { background: #fff; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-    .card-no-pad { background: #fff; border-radius: 8px; overflow: hidden; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 1.5rem 1.5rem 0; }
+    .card-no-pad { background: #fff; border-radius: 8px; overflow-x: auto; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 1.5rem 1.5rem 0; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
     th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid #eee; color: #666; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
     td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f0f0f0; }
@@ -48,7 +48,7 @@
         <div class="card-no-pad">
           <h2>Latest Prices</h2>
           <table id="latest-table">
-            <thead><tr><th>Product</th><th>Price (AUD)</th><th>As at</th></tr></thead>
+            <thead><tr id="latest-thead"><th>Product</th></tr></thead>
             <tbody></tbody>
           </table>
           <p class="updated" id="last-updated"></p>
@@ -134,19 +134,37 @@
       const gold   = Object.fromEntries(Object.entries(byProduct).filter(([n]) => n.includes('Gold')));
       const silver = Object.fromEntries(Object.entries(byProduct).filter(([n]) => n.includes('Silver')));
 
-      // latest prices table — gold section then silver
+      // all unique timestamps sorted, last 10 max
+      const tableTs = [...new Set(rows.map(r => r[0]))].sort().slice(-10);
+      const colCount = tableTs.length + 1;
+
+      // build header row — short date+time labels
+      const thead = document.getElementById('latest-thead');
+      tableTs.forEach(ts => {
+        const th = document.createElement('th');
+        th.textContent = ts.replace('T', ' ').slice(0, 16);
+        th.style.whiteSpace = 'nowrap';
+        thead.appendChild(th);
+      });
+
+      // build table rows — gold section then silver
       const tbody = document.querySelector('#latest-table tbody');
-      let lastTs = '';
+      const lastTs = tableTs[tableTs.length - 1] || '';
 
       const addSection = (label, cls, products) => {
         const hdr = document.createElement('tr');
-        hdr.innerHTML = `<td colspan="3"><h3 class="${cls}">${label}</h3></td>`;
+        hdr.innerHTML = `<td colspan="${colCount}"><h3 class="${cls}">${label}</h3></td>`;
         tbody.appendChild(hdr);
         for (const [name, entries] of Object.entries(products)) {
-          const latest = entries[entries.length - 1];
-          if (latest.ts > lastTs) lastTs = latest.ts;
+          const priceMap = Object.fromEntries(entries.map(e => [e.ts, e.price]));
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${name.replace('The Perth Mint ', '')}</td><td class="price">AUD ${latest.price.toLocaleString('en-AU', {minimumFractionDigits:2})}</td><td>${latest.ts.replace('T',' ').slice(0,16)} UTC</td>`;
+          const cells = tableTs.map(ts => {
+            const p = priceMap[ts];
+            return p != null
+              ? `<td class="price">${p.toLocaleString('en-AU', {minimumFractionDigits:2})}</td>`
+              : `<td style="color:#ccc">—</td>`;
+          }).join('');
+          tr.innerHTML = `<td>${name.replace('The Perth Mint ', '')}</td>${cells}`;
           tbody.appendChild(tr);
         }
       };
@@ -154,7 +172,7 @@
       addSection('Gold', 'gold-head', gold);
       addSection('Silver', 'silver-head', silver);
 
-      document.getElementById('last-updated').textContent = `Last scraped: ${lastTs.replace('T',' ').slice(0,16)} UTC`;
+      document.getElementById('last-updated').textContent = `Last scraped: ${lastTs.replace('T', ' ').slice(0, 16)} UTC`;
 
       // chart — last 7 days
       const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
