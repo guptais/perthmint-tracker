@@ -13,26 +13,25 @@
     header p { font-size: 0.85rem; color: #aaa; margin-top: 0.25rem; }
     main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
     h2 { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: #444; text-transform: uppercase; letter-spacing: 0.05em; }
-    h3 { font-size: 0.8rem; font-weight: 700; padding: 0.5rem 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
-    .gold-head { background: #fef9ec; color: #92640a; border-bottom: 1px solid #f0e0a0; }
-    .silver-head { background: #f0f4f8; color: #4a5568; border-bottom: 1px solid #d0dde8; }
     .card { background: #fff; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
     .card-no-pad { background: #fff; border-radius: 8px; overflow-x: auto; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 1.5rem 1.5rem 0; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid #eee; color: #666; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
-    td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f0f0f0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid #eee; color: #666; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; white-space: nowrap; }
+    td { padding: 0.55rem 0.75rem; border-bottom: 1px solid #f0f0f0; }
     tr:last-child td { border-bottom: none; }
     .price { font-weight: 600; color: #1a1a2e; }
     .updated { font-size: 0.8rem; color: #888; margin-top: 0.75rem; }
     .chart-wrap { position: relative; height: 280px; }
-    .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+    .item-chart-wrap { position: relative; height: 200px; }
+    .items-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
     .top-row { display: grid; grid-template-columns: 1fr auto; gap: 1.5rem; margin-bottom: 2rem; align-items: start; }
     .conversion-aside { background: #fff; border-radius: 8px; padding: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); min-width: 200px; }
     .conversion-aside h2 { font-size: 0.7rem; margin-bottom: 0.5rem; }
     .conversion-aside table { font-size: 0.78rem; }
     .conversion-aside th { font-size: 0.7rem; padding: 0.3rem 0.5rem; }
     .conversion-aside td { padding: 0.3rem 0.5rem; }
-    @media (max-width: 640px) { .charts-row { grid-template-columns: 1fr; } .top-row { grid-template-columns: 1fr; } }
+    .item-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem; color: #333; }
+    @media (max-width: 640px) { .items-grid { grid-template-columns: 1fr; } .top-row { grid-template-columns: 1fr; } }
     #status { text-align: center; padding: 3rem; color: #888; }
   </style>
 </head>
@@ -46,9 +45,9 @@
     <div id="content" style="display:none">
       <div class="top-row">
         <div class="card-no-pad">
-          <h2>Latest Prices in AUD</h2>
+          <h2>Price History (AUD)</h2>
           <table id="latest-table">
-            <thead><tr id="latest-thead"><th>Product</th></tr></thead>
+            <thead id="latest-thead"></thead>
             <tbody></tbody>
           </table>
           <p class="updated" id="last-updated"></p>
@@ -68,40 +67,92 @@
           </table>
         </div>
       </div>
-      <div class="charts-row">
-        <div class="card">
-          <h2>Gold — Last 7 Days</h2>
-          <div class="chart-wrap"><canvas id="chart-gold"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>Silver — Last 7 Days</h2>
-          <div class="chart-wrap"><canvas id="chart-silver"></canvas></div>
-        </div>
+
+      <h2 style="margin-bottom:1rem">Individual Prices — Last 7 Days</h2>
+      <div class="items-grid" id="items-grid"></div>
+
+      <div class="card">
+        <h2>% Change from Period Start — Last 7 Days</h2>
+        <div class="chart-wrap"><canvas id="chart-pct"></canvas></div>
       </div>
     </div>
   </main>
   <script>
     const CSV_URL = 'https://raw.githubusercontent.com/guptais/perthmint-tracker/main/perthmint_cast_bar_prices.csv';
 
-    const GOLD_COLORS   = ['#c9832a','#e9a84c','#f5c97a','#a05c1a'];
+    const GOLD_COLORS   = ['#c9832a','#e9a84c','#a05c1a','#f5c97a'];
     const SILVER_COLORS = ['#457b9d','#2a9d8f','#6baec6'];
+    const ALL_COLORS    = [...GOLD_COLORS, ...SILVER_COLORS];
 
-    function buildChart(canvasId, allTs, entries, colors) {
-      const datasets = Object.entries(entries).map(([name, data], i) => {
-        const map = Object.fromEntries(data.map(e => [e.ts, e.price]));
+    function shortName(name) {
+      return name.replace('The Perth Mint ', '').replace(' Cast Bar', '');
+    }
+
+    function buildItemChart(canvasId, label, entries, allTs, color) {
+      const priceMap = Object.fromEntries(entries.map(e => [e.ts, e.price]));
+      const validPrices = allTs.map(ts => priceMap[ts]).filter(p => p != null);
+      if (!validPrices.length) return;
+      const minP = Math.min(...validPrices);
+      const maxP = Math.max(...validPrices);
+      const range = maxP - minP || maxP * 0.005;
+
+      new Chart(document.getElementById(canvasId), {
+        type: 'line',
+        data: {
+          labels: allTs.map(ts => ts.replace('T', ' ').slice(0, 16)),
+          datasets: [{
+            label,
+            data: allTs.map(ts => priceMap[ts] ?? null),
+            borderColor: color,
+            backgroundColor: color + '18',
+            fill: true,
+            tension: 0.3,
+            pointRadius: allTs.length < 30 ? 3 : 1,
+            spanGaps: true,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { maxTicksLimit: 6, font: { size: 9 } } },
+            y: {
+              min: minP - range * 0.4,
+              max: maxP + range * 0.4,
+              ticks: {
+                maxTicksLimit: 5,
+                callback: v => '$' + Math.round(v).toLocaleString('en-AU'),
+              },
+            },
+          },
+        },
+      });
+    }
+
+    function buildPctChart(canvasId, allTs, byProduct, orderedNames, colors) {
+      const datasets = orderedNames.map((name, i) => {
+        const entries = byProduct[name] || [];
+        const priceMap = Object.fromEntries(entries.map(e => [e.ts, e.price]));
+        const firstPrice = allTs.map(ts => priceMap[ts]).find(p => p != null);
+        if (!firstPrice) return null;
         return {
-          label: name.replace('The Perth Mint ', ''),
-          data: allTs.map(ts => map[ts] ?? null),
+          label: shortName(name),
+          data: allTs.map(ts => {
+            const p = priceMap[ts];
+            return p != null ? +((p - firstPrice) / firstPrice * 100).toFixed(3) : null;
+          }),
           borderColor: colors[i % colors.length],
           backgroundColor: 'transparent',
           tension: 0.3,
-          pointRadius: allTs.length < 30 ? 4 : 2,
+          pointRadius: allTs.length < 30 ? 3 : 1,
           spanGaps: true,
         };
-      });
+      }).filter(Boolean);
+
       new Chart(document.getElementById(canvasId), {
         type: 'line',
-        data: { labels: allTs.map(ts => ts.replace('T',' ').slice(0,16)), datasets },
+        data: { labels: allTs.map(ts => ts.replace('T', ' ').slice(0, 16)), datasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -109,7 +160,7 @@
           plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
           scales: {
             x: { ticks: { maxTicksLimit: 8, font: { size: 10 } } },
-            y: { ticks: { callback: v => 'AUD ' + v.toLocaleString('en-AU') } },
+            y: { ticks: { callback: v => v.toFixed(2) + '%' } },
           },
         },
       });
@@ -123,63 +174,82 @@
         return cols.map(c => c.replace(/^"|"$/g, '').trim());
       });
 
-      // group by product
       const byProduct = {};
       for (const [ts, name, price] of rows) {
         if (!byProduct[name]) byProduct[name] = [];
         byProduct[name].push({ ts, price: parseFloat(price) });
       }
 
-      // split gold / silver
       const gold   = Object.fromEntries(Object.entries(byProduct).filter(([n]) => n.includes('Gold')));
       const silver = Object.fromEntries(Object.entries(byProduct).filter(([n]) => n.includes('Silver')));
 
-      // all unique timestamps sorted, last 10 max
-      const tableTs = [...new Set(rows.map(r => r[0]))].sort().slice(-10);
-      const colCount = tableTs.length + 1;
-
-      // build header row — short date+time labels
-      const thead = document.getElementById('latest-thead');
-      tableTs.forEach(ts => {
-        const th = document.createElement('th');
-        th.textContent = ts.replace('T', ' ').slice(0, 16);
-        th.style.whiteSpace = 'nowrap';
-        thead.appendChild(th);
+      const goldOrder = ['10oz', '5oz', '100g', '1oz'];
+      const sortedGold = Object.keys(gold).sort((a, b) => {
+        const ai = goldOrder.findIndex(o => a.includes(o));
+        const bi = goldOrder.findIndex(o => b.includes(o));
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
       });
+      const orderedNames = [...sortedGold, ...Object.keys(silver)];
 
-      // build table rows — gold section then silver
+      // TABLE: rows = timestamps (recent first), cols = products
+      const tableTs = [...new Set(rows.map(r => r[0]))].sort().reverse().slice(0, 15);
+
+      const thead = document.getElementById('latest-thead');
+      const headerRow = document.createElement('tr');
+      const th0 = document.createElement('th');
+      th0.textContent = 'Timestamp (UTC)';
+      headerRow.appendChild(th0);
+      orderedNames.forEach(name => {
+        const th = document.createElement('th');
+        th.textContent = shortName(name);
+        th.style.color = name.includes('Gold') ? '#92640a' : '#4a5568';
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+
       const tbody = document.querySelector('#latest-table tbody');
-      const lastTs = tableTs[tableTs.length - 1] || '';
-
-      const addSection = (label, cls, products) => {
-        const hdr = document.createElement('tr');
-        hdr.innerHTML = `<td colspan="${colCount}"><h3 class="${cls}">${label}</h3></td>`;
-        tbody.appendChild(hdr);
-        for (const [name, entries] of Object.entries(products)) {
-          const priceMap = Object.fromEntries(entries.map(e => [e.ts, e.price]));
-          const tr = document.createElement('tr');
-          const cells = tableTs.map(ts => {
-            const p = priceMap[ts];
-            return p != null
-              ? `<td class="price">${p.toLocaleString('en-AU', {minimumFractionDigits:2})}</td>`
-              : `<td style="color:#ccc">—</td>`;
-          }).join('');
-          tr.innerHTML = `<td>${name.replace('The Perth Mint ', '')}</td>${cells}`;
-          tbody.appendChild(tr);
+      for (const ts of tableTs) {
+        const tr = document.createElement('tr');
+        const td0 = document.createElement('td');
+        td0.textContent = ts.replace('T', ' ').slice(0, 16);
+        td0.style.cssText = 'white-space:nowrap; font-size:0.8rem; color:#666;';
+        tr.appendChild(td0);
+        for (const name of orderedNames) {
+          const entry = (byProduct[name] || []).find(e => e.ts === ts);
+          const td = document.createElement('td');
+          if (entry) {
+            td.className = 'price';
+            td.textContent = entry.price.toLocaleString('en-AU', { minimumFractionDigits: 2 });
+          } else {
+            td.style.color = '#ccc';
+            td.textContent = '—';
+          }
+          tr.appendChild(td);
         }
-      };
+        tbody.appendChild(tr);
+      }
 
-      addSection('Gold', 'gold-head', gold);
-      addSection('Silver', 'silver-head', silver);
+      const lastTs = tableTs[0] || '';
+      document.getElementById('last-updated').textContent =
+        `Last scraped: ${lastTs.replace('T', ' ').slice(0, 16)} UTC`;
 
-      document.getElementById('last-updated').textContent = `Last scraped: ${lastTs.replace('T', ' ').slice(0, 16)} UTC`;
-
-      // chart — last 7 days
+      // CHARTS: last 7 days
       const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const allTs = [...new Set(rows.map(r => r[0]).filter(ts => ts >= cutoff))].sort();
 
-      buildChart('chart-gold',   allTs, gold,   GOLD_COLORS);
-      buildChart('chart-silver', allTs, silver, SILVER_COLORS);
+      // Per-item charts
+      const itemsGrid = document.getElementById('items-grid');
+      orderedNames.forEach((name, i) => {
+        const canvasId = 'chart-item-' + i;
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.innerHTML = `<p class="item-title">${shortName(name)}</p><div class="item-chart-wrap"><canvas id="${canvasId}"></canvas></div>`;
+        itemsGrid.appendChild(div);
+        buildItemChart(canvasId, shortName(name), byProduct[name] || [], allTs, ALL_COLORS[i % ALL_COLORS.length]);
+      });
+
+      // % change chart
+      buildPctChart('chart-pct', allTs, byProduct, orderedNames, ALL_COLORS);
 
       document.getElementById('status').style.display = 'none';
       document.getElementById('content').style.display = 'block';
